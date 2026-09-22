@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Árbol de Flores Amarillas</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #f7f6f0;
+      font-family: 'Segoe UI', Georgia, serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Botón inicial */
+    #start-btn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: opacity 0.4s ease;
+    }
+
+    #start-btn .flower-icon {
+      width: 90px;
+      height: 90px;
+      position: relative;
+      animation: pulse 1.5s infinite alternate;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.6)); }
+      100% { transform: scale(1.12); filter: drop-shadow(0 0 25px rgba(255, 215, 0, 0.9)); }
+    }
+
+    #start-btn span {
+      margin-top: 15px;
+      font-size: 15px;
+      color: #333;
+      font-weight: 700;
+      background: #ffffffee;
+      padding: 8px 18px;
+      border-radius: 20px;
+      border: 1px solid #ffd700;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+
+    /* Canvas para renderizar */
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Contenedor del texto poético */
+    #text-container {
+      position: absolute;
+      left: 4%;
+      top: 10%;
+      width: 42%;
+      max-width: 330px;
+      z-index: 5;
+      color: #2c2c2c;
+      pointer-events: none;
+      background: rgba(255, 255, 255, 0.45);
+      backdrop-filter: blur(5px);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+
+    #text-container h2 {
+      font-size: 1.05rem;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      font-weight: 700;
+      color: #b8860b;
+      text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+    }
+
+    #text-container p {
+      font-size: 0.82rem;
+      line-height: 1.6;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: pre-line;
+      text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+    }
+
+    #text-container .footer-note {
+      margin-top: 15px;
+      font-size: 0.85rem;
+      font-style: italic;
+      text-transform: none;
+      font-weight: 500;
+      border-top: 1.5px solid #d4af37;
+      padding-top: 8px;
+      color: #333;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background-color: #333;
+      vertical-align: middle;
+      animation: blink 0.7s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container">
+    <div id="start-btn" onclick="startAnimation()">
+      <div class="flower-icon" id="btnFlowerContainer"></div>
+      <span>Click Aquí 🌻</span>
+    </div>
+
+    <canvas id="treeCanvas"></canvas>
+
+    <div id="text-container">
+      <h2 id="title"></h2>
+      <p id="typed-text"></p>
+      <div id="footer-text" class="footer-note"></div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('treeCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Canvas secundario para caché optimizado
+    const crownCanvas = document.createElement('canvas');
+    const crownCtx = crownCanvas.getContext('2d');
+    let isCrownCached = false;
+
+    let width, height;
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      crownCanvas.width = width;
+      crownCanvas.height = height;
+      isCrownCached = false;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let treeOffsetX = 0; 
+    let targetOffsetX = 0;
+
+    let trunkProgress = 0;
+    let branchProgress = 0;
+    let flowerProgress = 0;
+    let animState = 'idle';
+
+    let triggerFlower = null;
+    const fallingFlowers = [];
+
+    function drawSunflowerOnContext(targetCtx, x, y, radius, angle = 0) {
+      targetCtx.save();
+      targetCtx.translate(x, y);
+      if (angle !== 0) targetCtx.rotate(angle);
+
+      const petalCount = 12;
+      for (let i = 0; i < petalCount; i++) {
+        targetCtx.beginPath();
+        targetCtx.rotate((Math.PI * 2) / petalCount);
+        
+        targetCtx.fillStyle = '#fbc02d';
+        targetCtx.ellipse(0, radius * 0.7, radius * 0.28, radius * 0.65, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+
+      targetCtx.beginPath();
+      targetCtx.arc(0, 0, radius * 0.48, 0, Math.PI * 2);
+      targetCtx.fillStyle = '#3e2723';
+      targetCtx.fill();
+
+      targetCtx.beginPath();
+      targetCtx.arc(0, 0, radius * 0.38, 0, Math.PI * 2);
+      targetCtx.fillStyle = '#27150c';
+      targetCtx.fill();
+
+      targetCtx.restore();
+    }
+
+    function drawSunflower(x, y, radius, angle = 0) {
+      drawSunflowerOnContext(ctx, x, y, radius, angle);
+    }
+
+    function initBtnFlower() {
+      const btnContainer = document.getElementById('btnFlowerContainer');
+      const btnCanvas = document.createElement('canvas');
+      btnCanvas.width = 90;
+      btnCanvas.height = 90;
+      const bCtx = btnCanvas.getContext('2d');
+      btnContainer.appendChild(btnCanvas);
+
+      drawSunflowerOnContext(bCtx, 45, 45, 38);
+    }
+    initBtnFlower();
+
+    function drawLandscape() {
+      ctx.clearRect(0, 0, width, height);
+
+      // Cielo
+      const skyGradient = ctx.createLinearGradient(0, 0, 0, height * 0.85);
+      skyGradient.addColorStop(0, '#87CEEB');   
+      skyGradient.addColorStop(0.55, '#FFF0F5'); 
+      skyGradient.addColorStop(1, '#FFE4B5');   
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0, 0, width, height);
+
+      // Sol
+      const sunX = width * 0.8;
+      const sunY = height * 0.22;
+      const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 120);
+      sunGlow.addColorStop(0, 'rgba(255, 255, 220, 1)');
+      sunGlow.addColorStop(0.3, 'rgba(255, 223, 0, 0.6)');
+      sunGlow.addColorStop(1, 'rgba(255, 223, 0, 0)');
+      ctx.fillStyle = sunGlow;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 120, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Montañas
+      ctx.fillStyle = '#b2c8af';
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.8);
+      ctx.quadraticCurveTo(width * 0.25, height * 0.68, width * 0.5, height * 0.8);
+      ctx.quadraticCurveTo(width * 0.75, height * 0.65, width, height * 0.82);
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.fill();
+
+      // Suelo
+      const groundGradient = ctx.createLinearGradient(0, height * 0.75, 0, height);
+      groundGradient.addColorStop(0, '#558b2f'); 
+      groundGradient.addColorStop(1, '#2e7d32'); 
+      ctx.fillStyle = groundGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.82);
+      ctx.quadraticCurveTo(width * 0.35, height * 0.76, width * 0.7, height * 0.83);
+      ctx.quadraticCurveTo(width * 0.88, height * 0.85, width, height * 0.82);
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.fill();
+
+      const centerX = width / 2 + treeOffsetX;
+      const groundY = height * 0.81;
+
+      if (animState !== 'idle' && animState !== 'falling_start') {
+        ctx.beginPath();
+        ctx.arc(centerX, groundY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#e53935';
+        ctx.fill();
+      }
+    }
+
+    function drawArtisticTrunk(centerX, groundY, progress) {
+      if (progress <= 0) return;
+
+      ctx.save();
+
+      // Raíces
+      const rootProgress = Math.min(1, progress * 1.5);
+      ctx.strokeStyle = '#1a4314';
+      ctx.lineCap = 'round';
+
+      ctx.beginPath();
+      ctx.lineWidth = 14 * rootProgress;
+      ctx.moveTo(centerX - 3, groundY - 2);
+      ctx.quadraticCurveTo(centerX - 25, groundY + 12, centerX - 55 * rootProgress, groundY + 18);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.lineWidth = 12 * rootProgress;
+      ctx.moveTo(centerX + 3, groundY - 2);
+      ctx.quadraticCurveTo(centerX + 25, groundY + 10, centerX + 50 * rootProgress, groundY + 16);
+      ctx.stroke();
+
+      // Tronco
+      const maxH = 220;
+      const currentH = maxH * progress;
+
+      const p0 = { x: centerX, y: groundY };
+      const p1 = { x: centerX - 35, y: groundY - currentH * 0.35 };
+      const p2 = { x: centerX + 25, y: groundY - currentH * 0.70 };
+      const p3 = { x: centerX - 5, y: groundY - currentH };
+
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+      ctx.strokeStyle = '#1c5e20';
+      ctx.lineWidth = 22;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    const branchStructures = [
+      { sx: -5, sy: -140, ex: -80, ey: -230, w: 12 },
+      { sx: -5, sy: -140, ex: 70, ey: -230, w: 12 },
+      { sx: -5, sy: -180, ex: -40, ey: -300, w: 9 },
+      { sx: -5, sy: -180, ex: 30, ey: -300, w: 9 },
+      { sx: -80, sy: -230, ex: -130, ey: -330, w: 7 },
+      { sx: 70, sy: -230, ex: 120, ey: -330, w: 7 },
+      { sx: -80, sy: -230, ex: -65, ey: -380, w: 7 },
+      { sx: 70, sy: -230, ex: 55, ey: -380, w: 7 },
+      { sx: -5, sy: -220, ex: -5, ey: -410, w: 8 }
+    ];
+
+    const heartFlowers = [];
+    function generateHeartFlowers() {
+      heartFlowers.length = 0;
+      const totalFlowers = 1200;
+      
+      for (let i = 0; i < totalFlowers; i++) {
+        const t = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random());
+        
+        let hx = 16 * Math.pow(Math.sin(t), 3);
+        let hy = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+
+        const scaleFactor = 14.5;
+        hx *= r * scaleFactor;
+        hy *= r * scaleFactor;
+
+        const flowerY = hy - 290;
+
+        if (Math.abs(hx) < 14 && flowerY > -110) {
+          continue;
+        }
+
+        heartFlowers.push({
+          x: hx,
+          y: flowerY,
+          size: 8.5 + Math.random() * 5.5,
+          delay: Math.random()
+        });
+      }
+    }
+
+    function cacheCrown(centerX, groundY) {
+      crownCtx.clearRect(0, 0, crownCanvas.width, crownCanvas.height);
+      heartFlowers.forEach(f => {
+        drawSunflowerOnContext(crownCtx, centerX + f.x, groundY + f.y, f.size);
+      });
+      isCrownCached = true;
+    }
+
+    function spawnFallingFlower() {
+      const centerX = width / 2 + treeOffsetX;
+      const groundY = height * 0.81;
+
+      if (heartFlowers.length === 0) return;
+      const sourceFlower = heartFlowers[Math.floor(Math.random() * heartFlowers.length)];
+
+      fallingFlowers.push({
+        x: centerX + sourceFlower.x,
+        y: groundY + sourceFlower.y,
+        size: sourceFlower.size * 0.85,
+        speedY: 0.8 + Math.random() * 0.8,
+        swaySpeed: 0.02 + Math.random() * 0.02,
+        swayAmount: 1.2 + Math.random() * 1.5,
+        angle: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.03,
+        time: Math.random() * 100
+      });
+    }
+
+    function loop() {
+      drawLandscape();
+
+      const centerX = width / 2 + treeOffsetX;
+      const groundY = height * 0.81;
+
+      // Caída inicial
+      if (animState === 'falling_start' && triggerFlower) {
+        triggerFlower.progress += 0.02;
+        const t = triggerFlower.progress;
+        const currentY = triggerFlower.startY + (groundY - triggerFlower.startY) * t;
+        const currentX = triggerFlower.startX + Math.sin(t * Math.PI * 3) * 25;
+
+        drawSunflower(currentX, currentY, 26 * (1 - t * 0.35), t * Math.PI * 2);
+
+        if (t >= 1) animState = 'trunk';
+      }
+
+      // Tallo
+      drawArtisticTrunk(centerX, groundY, trunkProgress);
+
+      // Ramas
+      if (branchProgress > 0 && flowerProgress < 1) {
+        branchStructures.forEach(b => {
+          ctx.beginPath();
+          ctx.moveTo(centerX + b.sx, groundY + b.sy);
+          const curEx = b.sx + (b.ex - b.sx) * branchProgress;
+          const curEy = b.sy + (b.ey - b.sy) * branchProgress;
+          ctx.lineTo(centerX + curEx, groundY + curEy);
+          ctx.strokeStyle = '#1b5e20';
+          ctx.lineWidth = b.w;
+          ctx.stroke();
+        });
+      }
+
+      // Flores (Progreso ajustado para aparición más LENTA y suave)
+      if (flowerProgress > 0 && flowerProgress < 1) {
+        heartFlowers.forEach(f => {
+          if (flowerProgress >= f.delay) {
+            const scale = Math.min(1, (flowerProgress - f.delay) * 2);
+            drawSunflower(centerX + f.x, groundY + f.y, f.size * scale);
+          }
+        });
+      } else if (flowerProgress >= 1) {
+        if (!isCrownCached) {
+          cacheCrown(width / 2, groundY); 
+        }
+        ctx.drawImage(crownCanvas, treeOffsetX, 0);
+
+        if (Math.random() < 0.08) spawnFallingFlower();
+
+        for (let i = fallingFlowers.length - 1; i >= 0; i--) {
+          const f = fallingFlowers[i];
+          f.time += f.swaySpeed;
+          f.x += Math.sin(f.time) * f.swayAmount;
+          f.y += f.speedY;
+          f.angle += f.rotSpeed;
+
+          drawSunflower(f.x, f.y, f.size, f.angle);
+
+          if (f.y >= groundY - 5) fallingFlowers.splice(i, 1);
+        }
+      }
+
+      // Control de tiempos y secuencias
+      if (animState === 'trunk') {
+        trunkProgress += 0.02;
+        if (trunkProgress >= 1) {
+          trunkProgress = 1;
+          animState = 'branches';
+        }
+      } else if (animState === 'branches') {
+        branchProgress += 0.025;
+        if (branchProgress >= 1) {
+          branchProgress = 1;
+          animState = 'flowers';
+        }
+      } else if (animState === 'flowers') {
+        flowerProgress += 0.007; // Se redujo para que florezca con mayor calma
+        if (flowerProgress >= 1) {
+          flowerProgress = 1;
+          setTimeout(() => {
+            animState = 'shift';
+            targetOffsetX = width * 0.22;
+          }, 500);
+        }
+      } else if (animState === 'shift') {
+        treeOffsetX += (targetOffsetX - treeOffsetX) * 0.04;
+        if (Math.abs(targetOffsetX - treeOffsetX) < 1) {
+          treeOffsetX = targetOffsetX;
+          animState = 'typing';
+          startTypingEffect();
+        }
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    function startAnimation() {
+      const btn = document.getElementById('start-btn');
+      btn.style.opacity = '0';
+      setTimeout(() => btn.style.display = 'none', 400);
+
+      generateHeartFlowers();
+
+      triggerFlower = {
+        startX: width / 2,
+        startY: height / 2 - 20,
+        progress: 0
+      };
+
+      animState = 'falling_start';
+    }
+
+    // Efecto de mecanografía más LENTO y pausado
+    function startTypingEffect() {
+      const titleEl = document.getElementById('title');
+      const textEl = document.getElementById('typed-text');
+      const footerEl = document.getElementById('footer-text');
+
+      const titleText = "🌻 FELIZ DÍA DE LAS FLORES AMARILLAS 🌻";
+      const bodyText = "De: Isaac\nPara: Meghan\n\nCADA GIRASOL QUE VES\nAQUÍ ES UN LATIDO DE MI\nCORAZÓN.\nASÍ COMO EL SOL ILUMINA\nLOS CAMPOS, TÚ ILUMINAS\nMI VIDA.\nQUE ESTAS FLORES TE\nRECUERDEN LO ESPECIAL\nQUE ERES PARA MÍ.\n¡TE QUIERO!";
+      const footerText = "Eres el sol que hace florecer cada uno de mis días.";
+
+      let i = 0;
+      titleEl.innerHTML = '<span class="cursor"></span>';
+      
+      function typeTitle() {
+        if (i < titleText.length) {
+          titleEl.innerHTML = titleText.substring(0, i + 1) + '<span class="cursor"></span>';
+          i++;
+          setTimeout(typeTitle, 60); // Más pausado
+        } else {
+          titleEl.innerHTML = titleText;
+          setTimeout(typeBody, 300);
+        }
+      }
+
+      let j = 0;
+      function typeBody() {
+        textEl.innerHTML = '<span class="cursor"></span>';
+        function stepBody() {
+          if (j < bodyText.length) {
+            textEl.innerHTML = bodyText.substring(0, j + 1) + '<span class="cursor"></span>';
+            j++;
+            setTimeout(stepBody, 45); // Más pausado
+          } else {
+            textEl.innerHTML = bodyText;
+            setTimeout(typeFooter, 300);
+          }
+        }
+        stepBody();
+      }
+
+      let k = 0;
+      function typeFooter() {
+        footerEl.innerHTML = '<span class="cursor"></span>';
+        function stepFooter() {
+          if (k < footerText.length) {
+            footerEl.innerHTML = footerText.substring(0, k + 1) + '<span class="cursor"></span>';
+            k++;
+            setTimeout(stepFooter, 45); // Más pausado
+          } else {
+            footerEl.innerHTML = footerText;
+          }
+        }
+        stepFooter();
+      }
+
+      typeTitle();
+    }
+
+    loop();
+  </script>
+</body>
+</html>
